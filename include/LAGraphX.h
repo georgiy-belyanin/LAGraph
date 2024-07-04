@@ -779,6 +779,22 @@ int LAGraph_scc (
 
 //****************************************************************************
 LAGRAPHX_PUBLIC
+int LAGraph_RegularPathQuery
+(
+    // output:
+    GrB_Matrix *reachable,      // reachable(i, j): wether the node j is
+                                // rechable in state i
+    // input:
+    LAGraph_Graph *G,           // input graphs
+    int32_t nl,                 // label count
+    LAGraph_Graph *R,           // input automaton graphs
+    GrB_Index qs,               // starting state in regular automaton
+    const GrB_Index *sources,   // source vertices to start searching paths
+    int32_t ns,                 // number of source vertices
+    char *msg
+);
+//****************************************************************************
+LAGRAPHX_PUBLIC
 int LAGraph_VertexCentrality_Triangle       // vertex triangle-centrality
 (
     // outputs:
