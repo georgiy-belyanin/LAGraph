@@ -7,12 +7,18 @@
 #include <time.h>
 
 #define LEN 512
-#define MAX_LABELS 3
+#define MAX_LABELS 16
+
+#define WIKIDATA_DIR "Wikidata/"
+#define QUERIES_DIR "Queries/"
+
+#define QUERY_COUNT 660
 
 char msg [LAGRAPH_MSG_LEN] ;
 LAGraph_Graph G[MAX_LABELS];
 LAGraph_Graph R[MAX_LABELS];
 GrB_Matrix A;
+
 
 char filename [LEN+1] ;
 
@@ -25,100 +31,66 @@ typedef struct
 }
 matrix_info ;
 
-const matrix_info files [ ] =
-{
-    { { "rpq_data/410.mtx", NULL }, { "rpq_data/62.mtx", NULL }, "rpq_data/62_meta.txt", "rpq_data/62_sources.txt" },
-   { NULL, NULL, NULL, NULL  },
-} ;
 
-//****************************************************************************
 void test_Wikidata (void)
 {
     LAGraph_Init (msg) ;
     struct timespec start, finish;
 
-    for (int k = 0 ; ; k++)
-    {
-        if (files[k].sources == NULL) break;
-        TEST_CASE ("Testing") ;
- 
-        for (int i = 0; ; i++ ) {
-            const char *name = files[k].graphs[i] ;
-
-            if (name == NULL) break;
-            if (strlen(name) == 0) continue;
-
-
-            snprintf (filename, LEN, LG_DATA_DIR "%s", name) ;
-            FILE *f = fopen (filename, "r") ;
-            TEST_CHECK (f != NULL) ;
-            OK (LAGraph_MMRead (&A, f, msg)) ;
-            printf("%s\n", msg);
-            OK (fclose (f));
-
-            OK (LAGraph_New (&(G[i]), &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
-            TEST_CHECK (A == NULL) ;
-        }
-
-        for (int i = 0; ; i++ ) {
-            const char *name = files[k].fas[i] ;
-
-            if (name == NULL) break;
-            if (strlen(name) == 0) continue;
-
-            snprintf (filename, LEN, LG_DATA_DIR "%s", name) ;
-            FILE *f = fopen (filename, "r") ;
-            TEST_CHECK (f != NULL) ;
-            OK (LAGraph_MMRead (&A, f, msg)) ;
-            OK (fclose (f));
-
-            OK (LAGraph_New (&(R[i]), &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
-            TEST_CHECK (A == NULL) ;
-        }
-
-        int qs;
-        uint64_t source;
-        uint64_t sources[16];
-        int ns = 0;
-
-        const char *name = files[k].sources;
-
-        snprintf (filename, LEN, LG_DATA_DIR "%s", name) ;
+    for (int query = 0; query < QUERY_COUNT; query++) {
+        snprintf (filename, LEN, QUERIES_DIR "%d/meta.txt", query) ;
         FILE *f = fopen (filename, "r") ;
-        TEST_CHECK (f != NULL) ;
-        while(fscanf(f, "%ld", &source) != EOF)
-            sources[ns++] = source - 1;
-        OK(fclose(f));
+        if (f == NULL) continue;
 
-        name = files[k].fa_meta;
+        uint64_t source, dest;
 
-        snprintf (filename, LEN, LG_DATA_DIR "%s", name) ;
-        f = fopen (filename, "r") ;
-        TEST_CHECK (f != NULL) ;
-        fscanf(f, "%d", &qs);
-        OK(fclose(f));
-        qs--;
+        fscanf(f, "%ld", &source);
+        fscanf(f, "%ld", &dest);
 
+        if (source == 0) continue;
 
+        source--;
+        dest--;
+
+        uint64_t label;
+        uint64_t labels[MAX_LABELS];
+        uint64_t nl = 0;
+        while (fscanf(f, "%ld", &label) != EOF)
+            labels[nl++] = label;
+        fclose(f);
+
+        for (int i = 0; i < nl; i++) {
+            snprintf (filename, LEN, WIKIDATA_DIR "%ld.txt", labels[i]) ;
+            FILE *f = fopen (filename, "r") ;
+            if (f == NULL) continue;
+
+            OK (LAGraph_MMRead (&A, f, msg)) ;
+            OK (LAGraph_New (&(G[i]), &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+            fclose(f);
+        }
+
+        for (int i = 0; i < nl; i++) {
+            snprintf (filename, LEN, QUERIES_DIR "%d/%ld.txt", query, labels[i]) ;
+            FILE *f = fopen (filename, "r") ;
+            if (f == NULL) continue;
+
+            OK (LAGraph_MMRead (&A, f, msg)) ;
+            OK (LAGraph_New (&(R[i]), &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+            fclose(f);
+        }
+
+        uint64_t sources[1] = { source };
         GrB_Matrix reachable = NULL ;
 
         clock_gettime(CLOCK_MONOTONIC, &start);
-        OK (LAGraph_RegularPathQuery(&reachable, G, MAX_LABELS, R, qs, sources, ns, msg)) ;
+        OK (LAGraph_RegularPathQuery(&reachable, G, MAX_LABELS, R, 0, sources, 1, msg)) ;
         clock_gettime(CLOCK_MONOTONIC, &finish);
         double elapsed = (finish.tv_sec - start.tv_sec) + (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
         GxB_print(reachable, 1);
-        printf("%f\n", elapsed);
+        printf("%d %fmus\n", query, elapsed * 1000000);
 
         OK (GrB_free (&reachable)) ;
-        for (int i = 0; i < MAX_LABELS; i++ ) {
-            if (G[i] == NULL) continue;
-            OK (LAGraph_Delete (&(G[i]), msg)) ;
-        }
 
-        for (int i = 0; i < MAX_LABELS ; i++ ) {
-            if (R[i] == NULL) continue;
-            OK (LAGraph_Delete (&(R[i]), msg)) ;
-        }
     }
 
     LAGraph_Finalize (msg) ;
